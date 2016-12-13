@@ -820,6 +820,37 @@ void radix_tree_replace_slot(struct radix_tree_root *root,
 }
 
 /**
+ * __radix_tree_replace		- replace item in a slot
+ * @root:	radix tree root
+ * @node:	pointer to tree node
+ * @slot:	pointer to slot in @node
+ * @item:	new item to store in the slot.
+ *
+ * For use with __radix_tree_lookup().  Caller must hold tree write locked
+ * across slot lookup and replacement.
+ */
+void __radix_tree_replace(struct radix_tree_root *root,
+			  struct radix_tree_node *node,
+			  void **slot, void *item)
+{
+	void *old = rcu_dereference_raw(*slot);
+	int exceptional;
+
+	WARN_ON_ONCE(radix_tree_is_internal_node(item));
+	WARN_ON_ONCE(!!item - !!old);
+
+	exceptional = !!radix_tree_exceptional_entry(item) -
+		      !!radix_tree_exceptional_entry(old);
+
+	WARN_ON_ONCE(exceptional && !node && slot != (void **)&root->rnode);
+
+	if (node)
+		node->exceptional += exceptional;
+
+	rcu_assign_pointer(*slot, item);
+}
+
+/**
  *	radix_tree_tag_set - set a tag on a radix tree node
  *	@root:		radix tree root
  *	@index:		index key
