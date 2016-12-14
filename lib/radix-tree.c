@@ -220,6 +220,11 @@ radix_tree_find_next_bit(const unsigned long *addr,
 	return size;
 }
 
+static unsigned int iter_offset(const struct radix_tree_iter *iter)
+{
+	return (iter->index >> iter_shift(iter)) & RADIX_TREE_MAP_MASK;
+}
+
 #ifndef __KERNEL__
 static void dump_node(struct radix_tree_node *node, unsigned long index)
 {
@@ -1028,6 +1033,18 @@ static void node_tag_clear(struct radix_tree_root *root,
 }
 
 /**
+ * radix_tree_iter_tag_set - set a tag on the current iterator entry
+ * @root:	radix tree root
+ * @iter:	iterator state
+ * @tag:	tag to set
+ */
+void radix_tree_iter_tag_set(struct radix_tree_root *root,
+			const struct radix_tree_iter *iter, unsigned int tag)
+{
+	node_tag_set(root, iter->node, tag, iter_offset(iter));
+}
+
+/**
  *	radix_tree_tag_clear - clear a tag on a radix tree node
  *	@root:		radix tree root
  *	@index:		index key
@@ -1177,6 +1194,7 @@ void ** __radix_tree_next_slot(void **slot, struct radix_tree_iter *iter,
 		if (node == RADIX_TREE_RETRY)
 			return slot;
 		node = entry_to_node(node);
+		iter->node = node;
 		iter->shift = node->shift;
 
 		if (flags & RADIX_TREE_ITER_TAGGED) {
@@ -1279,6 +1297,7 @@ void **radix_tree_next_chunk(struct radix_tree_root *root,
 		iter->index = index;
 		iter->next_index = maxindex + 1;
 		iter->tags = 1;
+		iter->node = NULL;
 		__set_iter_shift(iter, 0);
 		return (void **)&root->rnode;
 	}
@@ -1323,6 +1342,7 @@ void **radix_tree_next_chunk(struct radix_tree_root *root,
 	/* Update the iterator state */
 	iter->index = (index &~ node_maxindex(node)) | (offset << node->shift);
 	iter->next_index = (index | node_maxindex(node)) + 1;
+	iter->node = node;
 	__set_iter_shift(iter, node->shift);
 
 	if (flags & RADIX_TREE_ITER_TAGGED)
@@ -1333,6 +1353,7 @@ void **radix_tree_next_chunk(struct radix_tree_root *root,
 EXPORT_SYMBOL(radix_tree_next_chunk);
 
 /**
+<<<<<<< HEAD
  * radix_tree_range_tag_if_tagged - for each item in given range set given
  *				   tag if item has another tag set
  * @root:		radix tree root
@@ -1449,6 +1470,8 @@ unsigned long radix_tree_range_tag_if_tagged(struct radix_tree_root *root,
 EXPORT_SYMBOL(radix_tree_range_tag_if_tagged);
 
 /**
+=======
+>>>>>>> 268f42de7181... radix-tree: delete radix_tree_range_tag_if_tagged()
  *	radix_tree_gang_lookup - perform multiple lookup on a radix tree
  *	@root:		radix tree root
  *	@results:	where the results of the lookup are placed
