@@ -129,7 +129,7 @@ void account_user_time(struct task_struct *p, u64 cputime)
 
 	/* Add user time to process. */
 	p->utime += cputime_to_nsecs(cputime);
-	account_group_user_time(p, cputime);
+	account_group_user_time(p, cputime_to_nsecs(cputime));
 
 	index = (task_nice(p) > 0) ? CPUTIME_NICE : CPUTIME_USER;
 
@@ -154,7 +154,7 @@ void account_guest_time(struct task_struct *p, u64 cputime)
 
 	/* Add guest time to process. */
 	p->utime += cputime_to_nsecs(cputime);
-	account_group_user_time(p, cputime);
+	account_group_user_time(p, cputime_to_nsecs(cputime));
 	p->gtime += cputime_to_nsecs(cputime);
 
 	/* Add guest time to cpustat. */
@@ -178,7 +178,7 @@ void account_system_index_time(struct task_struct *p,
 {
 	/* Add system time to process. */
 	p->stime += cputime_to_nsecs(cputime);
-	account_group_system_time(p, cputime);
+	account_group_system_time(p, cputime_to_nsecs(cputime));
 
 	/* Add system time to cpustat. */
 	task_group_account_field(p, index, cputime);
