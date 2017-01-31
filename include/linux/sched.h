@@ -2571,11 +2571,7 @@ static inline void task_cputime_scaled(struct task_struct *t,
 				       u64 *utimescaled,
 				       u64 *stimescaled)
 {
-	u64 ut, st;
-
-	task_cputime_scaled(t, &ut, &st);
-	*utimescaled = nsecs_to_cputime(ut);
-	*stimescaled = nsecs_to_cputime(st);
+	task_cputime(t, utimescaled, stimescaled);
 
 }
 #endif
