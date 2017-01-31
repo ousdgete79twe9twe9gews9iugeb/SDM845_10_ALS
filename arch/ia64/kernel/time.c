@@ -68,7 +68,7 @@ void vtime_flush(struct task_struct *tsk)
 
 	if (ti->ac_utime) {
 		delta_utime = cycle_to_cputime(ti->ac_utime);
-		account_user_time(tsk, delta_utime);
+		account_user_time(tsk, putime_to_nsecs(cycle_to_cputime(delta_utime)));
 		ti->ac_utime = 0;
 	}
 }
