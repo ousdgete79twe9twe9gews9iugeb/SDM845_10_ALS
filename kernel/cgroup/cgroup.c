@@ -427,6 +427,12 @@ out_unlock:
 	return css;
 }
 
+static void cgroup_get_live(struct cgroup *cgrp)
+{
+	WARN_ON_ONCE(cgroup_is_dead(cgrp));
+	css_get(&cgrp->self);
+}
+
 struct cgroup_subsys_state *of_css(struct kernfs_open_file *of)
 {
 	struct cgroup *cgrp = of->kn->parent->priv;
@@ -913,7 +919,7 @@ static void link_css_set(struct list_head *tmp_links, struct css_set *cset,
 	list_add_tail(&link->cgrp_link, &cset->cgrp_links);
 
 	if (cgroup_parent(cgrp))
-		cgroup_get(cgrp);
+		cgroup_get_live(cgrp);
 }
 
 /**
@@ -1786,7 +1792,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 			return ERR_PTR(-EINVAL);
 		}
 		cgrp_dfl_visible = true;
-		cgroup_get(&cgrp_dfl_root.cgrp);
+		cgroup_get_live(&cgrp_dfl_root.cgrp);
 
 		dentry = cgroup_do_mount(&cgroup2_fs_type, flags, &cgrp_dfl_root,
 					 CGROUP2_SUPER_MAGIC, ns);
@@ -2580,7 +2586,7 @@ restart:
 			if (!css || !percpu_ref_is_dying(&css->refcnt))
 				continue;
 
-			cgroup_get(dsct);
+			cgroup_get_live(dsct);
 			prepare_to_wait(&dsct->offline_waitq, &wait,
 					TASK_UNINTERRUPTIBLE);
 
@@ -4064,7 +4070,7 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 {
 	lockdep_assert_held(&cgroup_mutex);
 
-	cgroup_get(cgrp);
+	cgroup_get_live(cgrp);
 
 	memset(css, 0, sizeof(*css));
 	css->cgroup = cgrp;
@@ -4243,7 +4249,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	/* allocation complete, commit to creation */
 	list_add_tail_rcu(&cgrp->self.sibling, &cgroup_parent(cgrp)->self.children);
 	atomic_inc(&root->nr_cgrps);
-	cgroup_get(parent);
+	cgroup_get_live(parent);
 
 	/*
 	 * @cgrp is now fully operational.  If something fails after this
@@ -5081,7 +5087,7 @@ struct cgroup *cgroup_get_from_path(const char *path)
 	if (kn) {
 		if (kernfs_type(kn) == KERNFS_DIR) {
 			cgrp = kn->priv;
-			cgroup_get(cgrp);
+			cgroup_get_live(cgrp);
 		} else {
 			cgrp = ERR_PTR(-ENOTDIR);
 		}
@@ -5161,6 +5167,11 @@ void cgroup_sk_alloc(struct sock_cgroup_data *skcd)
 
 	/* Socket clone path */
 	if (skcd->val) {
+		/*
+		 * We might be cloning a socket which is left in an empty
+		 * cgroup and the cgroup might have already been rmdir'd.
+		 * Don't use cgroup_get_live().
+		 */
 		cgroup_get(sock_cgroup_ptr(skcd));
 		return;
 	}
