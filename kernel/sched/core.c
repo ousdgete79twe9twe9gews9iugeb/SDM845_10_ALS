@@ -9339,9 +9339,10 @@ static int __cfs_schedulable(struct task_group *tg, u64 period, u64 quota)
 	return ret;
 }
 
-static int cpu_stats_show(struct seq_file *sf, void *v)
+static int cpu_extra_stat_show(struct seq_file *sf,
+				struct cgroup_subsys_state *css)
 {
-	struct task_group *tg = css_tg(seq_css(sf));
+	struct task_group *tg = css_tg(css);
 	struct cfs_bandwidth *cfs_b = &tg->cfs_bandwidth;
 
 	seq_printf(sf, "nr_periods %d\n", cfs_b->nr_periods);
@@ -9398,10 +9399,6 @@ static struct cftype cpu_files[] = {
 		.read_u64 = cpu_cfs_period_read_u64,
 		.write_u64 = cpu_cfs_period_write_u64,
 	},
-	{
-		.name = "stat",
-		.seq_show = cpu_stats_show,
-	},
 #endif
 #ifdef CONFIG_RT_GROUP_SCHED
 	{
@@ -9423,6 +9420,7 @@ struct cgroup_subsys cpu_cgrp_subsys = {
 	.css_online	= cpu_cgroup_css_online,
 	.css_released	= cpu_cgroup_css_released,
 	.css_free	= cpu_cgroup_css_free,
+	.css_extra_stat_show = cpu_extra_stat_show,
 	.fork		= cpu_cgroup_fork,
 	.can_attach	= cpu_cgroup_can_attach,
 	.attach		= cpu_cgroup_attach,
