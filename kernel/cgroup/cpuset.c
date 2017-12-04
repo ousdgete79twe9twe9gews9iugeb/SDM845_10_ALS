@@ -2372,8 +2372,15 @@ retry:
 	mutex_unlock(&cpuset_mutex);
 }
 
+static bool force_rebuild;
+
+void cpuset_force_rebuild(void)
+{
+	force_rebuild = true;
+}
+
 /**
- * cpuset_hotplug - handle CPU/memory hotunplug for a cpuset
+ * cpuset_hotplug_workfn - handle CPU/memory hotunplug for a cpuset
  *
  * This function is called after either CPU or memory configuration has
  * changed and updates cpuset accordingly.  The top_cpuset is always
@@ -2388,7 +2395,7 @@ retry:
  * Note that CPU offlining during suspend is ignored.  We don't modify
  * cpusets across suspend/resume cycles at all.
  */
-static void cpuset_hotplug(bool use_cpu_hp_lock)
+static void cpuset_hotplug_workfn(struct work_struct *work)
 {
 	static cpumask_t new_cpus;
 	static nodemask_t new_mems;
@@ -2446,29 +2453,15 @@ static void cpuset_hotplug(bool use_cpu_hp_lock)
 	}
 
 	/* rebuild sched domains if cpus_allowed has changed */
-	if (cpus_updated) {
-		if (use_cpu_hp_lock)
-			rebuild_sched_domains();
-		else {
-			/* Acquiring cpu_hotplug_lock is not required.
-			 * When cpuset_hotplug() is called in hotplug path,
-			 * cpu_hotplug_lock is held by the hotplug context
-			 * which is waiting for cpuhp_thread_fun to indicate
-			 * completion of callback.
-			 */
-			mutex_lock(&cpuset_mutex);
-			rebuild_sched_domains_cpuslocked();
-			mutex_unlock(&cpuset_mutex);
-		}
+	if (cpus_updated || force_rebuild) {
+		force_rebuild = false;
+		rebuild_sched_domains();
 	}
 }
 
-static void cpuset_hotplug_workfn(struct work_struct *work)
+void cpuset_update_active_cpus(void)
 {
 	/*
-	 * We're inside cpu hotplug critical region which usually nests
-	 * inside cgroup synchronization.  Bounce actual hotplug processing
-	 * to a work item to avoid reverse locking order.
 	 *
 	 * We still need to do partition_sched_domains() synchronously;
 	 * otherwise, the scheduler will get confused and put tasks to the
@@ -2476,12 +2469,12 @@ static void cpuset_hotplug_workfn(struct work_struct *work)
 	 * cpuset_hotplug_workfn() will rebuild it as necessary.
 	 */
 	partition_sched_domains(1, NULL, NULL);
-	cpuset_hotplug(true);
+	schedule_work(&cpuset_hotplug_work);
 }
 
-void cpuset_update_active_cpus(void)
+void cpuset_wait_for_hotplug(void)
 {
-	cpuset_hotplug(false);
+	flush_work(&cpuset_hotplug_work);
 }
 
 /*
