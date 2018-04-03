@@ -222,35 +222,27 @@ failures as core would send notifications for that.
 
 As most cpufreq processors only allow for being set to a few specific
 frequencies, a "frequency table" with some functions might assist in
-some work of the processor driver. Such a "frequency table" consists
-of an array of struct cpufreq_frequency_table entries, with any value in
-"driver_data" you want to use, and the corresponding frequency in
-"frequency". At the end of the table, you need to add a
-cpufreq_frequency_table entry with frequency set to CPUFREQ_TABLE_END. And
-if you want to skip one entry in the table, set the frequency to 
-CPUFREQ_ENTRY_INVALID. The entries don't need to be in ascending
-order.
+some work of the processor driver. Such a "frequency table" consists of
+an array of struct cpufreq_frequency_table entries, with driver specific
+values in "driver_data", the corresponding frequency in "frequency" and
+flags set. At the end of the table, you need to add a
+cpufreq_frequency_table entry with frequency set to CPUFREQ_TABLE_END.
+And if you want to skip one entry in the table, set the frequency to
+CPUFREQ_ENTRY_INVALID. The entries don't need to be in sorted in any
+particular order, but if they are cpufreq core will do DVFS a bit
+quickly for them as search for best match is faster.
 
-By calling cpufreq_table_validate_and_show(struct cpufreq_policy *policy,
-					struct cpufreq_frequency_table *table);
-the cpuinfo.min_freq and cpuinfo.max_freq values are detected, and
-policy->min and policy->max are set to the same values. This is
-helpful for the per-CPU initialization stage.
+The cpufreq table is verified automatically by the core if the policy contains a
+valid pointer in its policy->freq_table field.
 
-int cpufreq_frequency_table_verify(struct cpufreq_policy *policy,
-                                   struct cpufreq_frequency_table *table);
-assures that at least one valid frequency is within policy->min and
-policy->max, and all other criteria are met. This is helpful for the
-->verify call.
+cpufreq_frequency_table_verify() assures that at least one valid
+frequency is within policy->min and policy->max, and all other criteria
+are met. This is helpful for the ->verify call.
 
-int cpufreq_frequency_table_target(struct cpufreq_policy *policy,
-                                   unsigned int target_freq,
-                                   unsigned int relation);
-
-is the corresponding frequency table helper for the ->target
-stage. Just pass the values to this function, and this function
-returns the number of the frequency table entry which contains
-the frequency the CPU shall be set to.
+cpufreq_frequency_table_target() is the corresponding frequency table
+helper for the ->target stage. Just pass the values to this function,
+and this function returns the of the frequency table entry which
+contains the frequency the CPU shall be set to.
 
 The following macros can be used as iterators over cpufreq_frequency_table:
 
