@@ -26,6 +26,10 @@ void cgroup_rstat_updated(struct cgroup *cgrp, int cpu)
 	struct cgroup *parent;
 	unsigned long flags;
 
+	/* nothing to do for root */
+	if (!cgroup_parent(cgrp))
+		return;
+
 	/*
 	 * Speculative already-on-list test.  This may race leading to
 	 * temporary inaccuracies, which is fine.
