@@ -28,6 +28,11 @@
 
 #ifdef CONFIG_CGROUPS
 
+void cgroup_rstat_updated(struct cgroup *cgrp, int cpu);
+void cgroup_rstat_flush(struct cgroup *cgrp);
+void cgroup_rstat_flush_hold(struct cgroup *cgrp);
+void cgroup_rstat_flush_release(void);
+
 /*
  * All weight knobs on the default hierarhcy should use the following min,
  * default and max values.  The default value is the logarithmic center of
