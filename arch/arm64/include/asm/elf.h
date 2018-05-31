@@ -23,6 +23,7 @@
  */
 #include <asm/ptrace.h>
 #include <asm/user.h>
+#include <asm/fpsimd.h>
 
 /*
  * AArch64 static relocation types.
@@ -184,8 +185,17 @@ typedef compat_elf_greg_t		compat_elf_gregset_t[COMPAT_ELF_NGREG];
 					 ((x)->e_flags & EF_ARM_EABI_MASK))
 
 #define compat_start_thread		compat_start_thread
-#define COMPAT_SET_PERSONALITY(ex)	set_thread_flag(TIF_32BIT);
+#define COMPAT_SET_PERSONALITY(ex)					\
+do {									\
+	if (current->mm)						\
+		fpsimd_enable_trap();					\
+	set_thread_flag(TIF_32BIT);					\
+} while (0)
+#ifdef CONFIG_VDSO32
+#define COMPAT_ARCH_DLINFO		_SET_AUX_ENT_VDSO
+#else
 #define COMPAT_ARCH_DLINFO
+#endif
 extern int aarch32_setup_vectors_page(struct linux_binprm *bprm,
 				      int uses_interp);
 #define compat_arch_setup_additional_pages \
