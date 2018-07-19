@@ -249,9 +249,6 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->max = max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	if (rt_rq_is_runnable(&rq->rt))
-		return max;
-
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
 	 * because of inaccuracies in how we track these -- see
@@ -291,8 +288,7 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	 *   U' = irq + ------- * U
 	 *                max
 	 */
-	util *= (max - irq);
-	util /= max;
+	util = scale_irq_capacity(util, irq, max);
 	util += irq;
 
 	/*
