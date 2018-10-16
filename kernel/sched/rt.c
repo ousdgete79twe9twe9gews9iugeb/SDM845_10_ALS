@@ -1994,9 +1994,6 @@ retry:
 
 			util = cpu_util(cpu);
 
-			if (__cpu_overutilized(cpu, util + tutil))
-				continue;
-
 			/* Find the least loaded CPU */
 			if (util > best_cpu_util)
 				continue;
@@ -2147,9 +2144,6 @@ retry:
 			util = cpu_util(cpu);
 
 			if (avoid_prev_cpu && cpu == prev_cpu)
-				continue;
-
-			if (__cpu_overutilized(cpu, tutil))
 				continue;
 
 			if (cpu_isolated(cpu))
