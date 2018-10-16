@@ -18,7 +18,7 @@
 #include <linux/sched/sysctl.h>
 #include "sched.h"
 #include "tune.h"
-
+#include <linux/cpuset.h>
 #include <linux/sched/cpufreq.h>
 
 struct sugov_tunables {
@@ -490,6 +490,26 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 	for_each_cpu(j, policy->cpus) {
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
 		unsigned long j_util, j_max;
+		s64 delta_ns;
+
+		/*
+		 * If the CPU utilization was last updated before the previous
+		 * frequency update and the time elapsed between the last update
+		 * of the CPU utilization and the last frequency update is long
+		 * enough, don't take the CPU into account as it probably is
+		 * idle now (and clear iowait_boost for it).
+		 */
+		delta_ns = time - j_sg_cpu->last_update;
+		if (delta_ns > stale_ns) {
+			j_sg_cpu->iowait_boost = 0;
+			j_sg_cpu->iowait_boost_pending = false;
+		}
+		if (j_sg_cpu->flags & SCHED_CPUFREQ_RT) {
+			/* clear cache when it's bypassed */
+			sg_policy->cached_raw_freq = 0;
+			return policy->cpuinfo.max_freq;
+		}
+
 		j_util = sugov_get_util(j_sg_cpu);
 		j_max = j_sg_cpu->max;
 		if (j_util * max > j_max * util) {
@@ -688,7 +708,7 @@ static struct kobj_type sugov_tunables_ktype = {
 
 /********************** cpufreq governor interface *********************/
 
-static struct cpufreq_governor schedutil_gov;
+struct cpufreq_governor schedutil_gov;
 
 static struct sugov_policy *sugov_policy_alloc(struct cpufreq_policy *policy)
 {
@@ -1000,15 +1020,15 @@ static void sugov_limits(struct cpufreq_policy *policy)
 	sg_policy->limits_changed = true;
 }
 
-static struct cpufreq_governor schedutil_gov = {
-	.name = "schedutil",
-	.owner = THIS_MODULE,
-	.dynamic_switching = true,
-	.init = sugov_init,
-	.exit = sugov_exit,
-	.start = sugov_start,
-	.stop = sugov_stop,
-	.limits = sugov_limits,
+struct cpufreq_governor schedutil_gov = {
+	.name			= "schedutil",
+	.owner			= THIS_MODULE,
+	.dynamic_switching	= true,
+	.init			= sugov_init,
+	.exit			= sugov_exit,
+	.start			= sugov_start,
+	.stop			= sugov_stop,
+	.limits			= sugov_limits,
 };
 
 #ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
@@ -1023,3 +1043,36 @@ static int __init sugov_register(void)
 	return cpufreq_register_governor(&schedutil_gov);
 }
 core_initcall(sugov_register);
+
+#ifdef CONFIG_ENERGY_MODEL
+extern bool sched_energy_update;
+extern struct mutex sched_energy_mutex;
+
+static void rebuild_sd_workfn(struct work_struct *work)
+{
+	mutex_lock(&sched_energy_mutex);
+	sched_energy_update = true;
+	rebuild_sched_domains();
+	sched_energy_update = false;
+	mutex_unlock(&sched_energy_mutex);
+}
+static DECLARE_WORK(rebuild_sd_work, rebuild_sd_workfn);
+
+/*
+ * EAS shouldn't be attempted without sugov, so rebuild the sched_domains
+ * on governor changes to make sure the scheduler knows about it.
+ */
+void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
+				  struct cpufreq_governor *old_gov)
+{
+	if (old_gov == &schedutil_gov || policy->governor == &schedutil_gov) {
+		/*
+		 * When called from the cpufreq_register_driver() path, the
+		 * cpu_hotplug_lock is already held, so use a work item to
+		 * avoid nested locking in rebuild_sched_domains().
+		 */
+		schedule_work(&rebuild_sd_work);
+	}
+
+}
+#endif
