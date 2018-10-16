@@ -3195,10 +3195,43 @@ static inline void sched_irq_work_queue(struct irq_work *work)
 		irq_work_queue_on(work, cpumask_any(cpu_online_mask));
 }
 
+#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+/**
+ * enum schedutil_type - CPU utilization type
+ * @FREQUENCY_UTIL:	Utilization used to select frequency
+ * @ENERGY_UTIL:	Utilization used during energy calculation
+ *
+ * The utilization signals of all scheduling classes (CFS/RT/DL) and IRQ time
+ * need to be aggregated differently depending on the usage made of them. This
+ * enum is used within schedutil_freq_util() to differentiate the types of
+ * utilization expected by the callers, and adjust the aggregation accordingly.
+ */
+enum schedutil_type {
+	FREQUENCY_UTIL,
+	ENERGY_UTIL,
+};
+
+unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
+			unsigned long max, enum schedutil_type type);
+
+static inline unsigned long schedutil_energy_util(int cpu, unsigned long cfs)
+{
+	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
+
+	return schedutil_freq_util(cpu, cfs, max, ENERGY_UTIL);
+}
+
 static inline unsigned long cpu_util_rt(struct rq *rq)
 {
 	return READ_ONCE(rq->avg_rt.util_avg);
 }
+
+#else /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
+static inline unsigned long schedutil_energy_util(int cpu, unsigned long cfs)
+{
+	return cfs;
+}
+#endif
 
 #ifdef HAVE_SCHED_AVG_IRQ
 static inline unsigned long cpu_util_irq(struct rq *rq)
@@ -3226,6 +3259,7 @@ unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned
 	return util;
 }
 #endif
+
 static inline unsigned long cpu_bw_dl(struct rq *rq)
 {
 	return (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
