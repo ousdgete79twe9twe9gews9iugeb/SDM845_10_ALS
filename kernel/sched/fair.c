@@ -5222,14 +5222,6 @@ static inline void hrtick_update(struct rq *rq)
 }
 #endif
 
-#ifdef CONFIG_SMP
-static unsigned long capacity_orig_of(int cpu);
-static unsigned long cpu_util(int cpu);
-//static inline unsigned long boosted_cpu_util(int cpu);
-#else
-#define boosted_cpu_util(cpu) cpu_util_freq(cpu)
-#endif
-
 /*
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
@@ -6479,7 +6471,7 @@ wake_affine_idle(int this_cpu, int prev_cpu, int sync)
 	 */
 	if (idle_cpu(this_cpu) && cpus_share_cache(this_cpu, prev_cpu))
 		return idle_cpu(prev_cpu) ? prev_cpu : this_cpu;
-	
+
 	if (sync && cpu_rq(this_cpu)->nr_running == 1)
 		return this_cpu;
 
@@ -6544,7 +6536,7 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	schedstat_inc(p->se.statistics.nr_wakeups_affine_attempts);
 	if (target == nr_cpumask_bits)
 		return prev_cpu;
-		
+
 	schedstat_inc(sd->ttwu_move_affine);
 	schedstat_inc(p->se.statistics.nr_wakeups_affine);
 	return target;
@@ -6660,14 +6652,29 @@ long schedtune_task_margin(struct task_struct *task)
 	return margin;
 }
 
-unsigned long
-stune_util(int cpu, unsigned long other_util)
+#else /* CONFIG_SCHED_TUNE */
+
+static inline int
+schedtune_cpu_margin(unsigned long util, int cpu)
 {
-	unsigned long util = min_t(unsigned long, SCHED_CAPACITY_SCALE,
-				   cpu_util_cfs(cpu_rq(cpu)) + other_util);
+	return 0;
+}
+
+static inline int
+schedtune_task_margin(struct task_struct *p)
+{
+	return 0;
+}
+
+#endif /* CONFIG_SCHED_TUNE */
+
+unsigned long
+boosted_cpu_util(int cpu, unsigned long other_util)
+{
+	unsigned long util = cpu_util_cfs(cpu_rq(cpu)) + other_util;
 	long margin = schedtune_cpu_margin(util, cpu);
 
-	trace_sched_boost_cpu(cpu, util, margin);
+	//trace_sched_boost_cpu(cpu, util, margin);
 
 	return util + margin;
 }
@@ -7813,7 +7820,7 @@ static inline unsigned long uclamp_task_util(struct task_struct *p)
 /*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
  * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
- * 
+ *
  * In that case WAKE_AFFINE doesn't make sense and we'll let
  * BALANCE_WAKE sort things out.
  */
@@ -7978,9 +7985,9 @@ static int select_energy_cpu_brute(struct task_struct *p, int prev_cpu,
 	schedstat_inc(this_rq()->eas_stats.secb_attempts);
 
 	rcu_read_lock();
-        boosted = uclamp_boosted(p) || per_task_boost(p) > 0;
+	boosted = uclamp_boosted(p) || per_task_boost(p) > 0;
 #ifdef CONFIG_CGROUP_SCHEDTUNE
-        prefer_idle = uclamp_latency_sensitive(p);
+	prefer_idle = uclamp_latency_sensitive(p);
 #else
 	prefer_idle = 0;
 #endif
@@ -8127,12 +8134,6 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
 	return min_t(unsigned long, util, capacity_orig_of(cpu));
 }
 
-unsigned long sched_get_rt_rq_util(int cpu)
-{
-	struct rq *rq = cpu_rq(cpu);
-	return cpu_util_rt(rq);
-}
-
 /*
  * compute_energy_simplified(): Estimates the energy that would be consumed
  * if @p was migrated to @dst_cpu. compute_energy_simplified() predicts what
@@ -8160,7 +8161,8 @@ static long compute_energy_simplified(struct task_struct *p, int dst_cpu,
 		 */
 		for_each_cpu_and(cpu, perf_domain_span(pd), cpu_online_mask) {
 			util = cpu_util_next(cpu, p, dst_cpu);
-			util += sched_get_rt_rq_util(cpu);
+			util += cpu_util_rt(cpu_rq(cpu));
+			util = schedutil_energy_util(cpu, util);
 			max_util = max(util, max_util);
 			sum_util += util;
 		}
@@ -8335,6 +8337,7 @@ static void migrate_task_rq_fair(struct task_struct *p)
 	p->se.exec_start = 0;
 }
 
+#ifdef CONFIG_SMP
 static void task_dead_fair(struct task_struct *p)
 {
 	remove_entity_load_avg(&p->se);
@@ -9316,7 +9319,7 @@ next:
 		env->flags &= ~(LBF_IGNORE_BIG_TASKS |
 				LBF_IGNORE_PREFERRED_CLUSTER_TASKS |
 				LBF_IGNORE_STUNE_BOOSTED_TASKS);
-				
+
 		env->loop = orig_loop;
 		goto redo;
 	}
@@ -9596,10 +9599,9 @@ static inline int get_sd_load_idx(struct sched_domain *sd,
 	return load_idx;
 }
 
-static unsigned long scale_rt_capacity(int cpu)
+static unsigned long scale_rt_capacity(int cpu, unsigned long max)
 {
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
 	unsigned long used, free;
 	unsigned long irq;
 
@@ -9660,9 +9662,7 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 	raw_spin_unlock_irqrestore(&mcc->lock, flags);
 
 skip_unlock: __attribute__ ((unused));
-
-	capacity *= scale_rt_capacity(cpu);
-	capacity >>= SCHED_CAPACITY_SHIFT;
+	capacity = scale_rt_capacity(cpu, capacity);
 
 	if (!capacity)
 		capacity = 1;
@@ -12918,8 +12918,10 @@ static void walt_check_for_rotation(struct rq *src_rq)
 		get_task_struct(src_rq->curr);
 		get_task_struct(dst_rq->curr);
 
+#ifdef CONFIG_SCHED_WALT
 		mark_reserved(src_cpu);
 		mark_reserved(dst_cpu);
+#endif
 		wr = &per_cpu(walt_rotate_works, src_cpu);
 
 		wr->src_task = src_rq->curr;
@@ -12961,7 +12963,9 @@ void check_for_migration(struct rq *rq, struct task_struct *p)
 		if (capacity_orig_of(new_cpu) > capacity_orig_of(cpu)) {
 			active_balance = kick_active_balance(rq, p, new_cpu);
 			if (active_balance) {
+#ifdef CONFIG_SCHED_WALT
 				mark_reserved(new_cpu);
+#endif
 				raw_spin_unlock(&migration_lock);
 				stop_one_cpu_nowait(cpu,
 					active_load_balance_cpu_stop, rq,

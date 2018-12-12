@@ -2194,31 +2194,10 @@ cpu_util_freq(int cpu, struct sched_walt_cpu_load *walt_load)
 
 #else
 
-static inline unsigned long cpu_bw_dl(struct rq *rq)
+static inline unsigned long
+cpu_util_freq(int cpu, struct sched_walt_cpu_load *walt_load)
 {
-	return (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
-}
-
-static inline unsigned long cpu_util_dl(struct rq *rq)
-{
-	return READ_ONCE(rq->avg_dl.util_avg);
-}
-
-static inline unsigned long cpu_util_cfs(struct rq *rq)
-{
-	return rq->cfs.avg.util_avg;
-}
-
-static inline unsigned long cpu_util_rt(struct rq *rq)
-{
-	return READ_ONCE(rq->avg_rt.util_avg);
-}
-
-static inline unsigned long cpu_util_freq(int cpu)
-{
-	struct rq *rq = cpu_rq(cpu);
-
-	return min(cpu_util_cfs(rq) + cpu_util_rt(rq), capacity_orig_of(cpu));
+	return cpu_util(cpu);
 }
 
 #define sched_ravg_window TICK_NSEC
@@ -3267,32 +3246,10 @@ extern void sched_get_nr_running_avg(struct sched_avg_stats *stats);
 #if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 #define perf_domain_span(pd) (to_cpumask(((pd)->obj->cpus)))
 
-#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-/**
- * enum schedutil_type - CPU utilization type
- * @FREQUENCY_UTIL:	Utilization used to select frequency
- * @ENERGY_UTIL:	Utilization used during energy calculation
- *
- * The utilization signals of all scheduling classes (CFS/RT/DL) and IRQ time
- * need to be aggregated differently depending on the usage made of them. This
- * enum is used within schedutil_freq_util() to differentiate the types of
- * utilization expected by the callers, and adjust the aggregation accordingly.
- */
-enum schedutil_type {
-	FREQUENCY_UTIL,
-	ENERGY_UTIL,
-};
-
-unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
-			unsigned long max, enum schedutil_type type);
-
-static inline unsigned long schedutil_energy_util(int cpu, unsigned long cfs)
+static inline unsigned long cpu_util_rt(struct rq *rq)
 {
-	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
-
-	return schedutil_freq_util(cpu, cfs, max, ENERGY_UTIL);
+	return READ_ONCE(rq->avg_rt.util_avg);
 }
-
 
 #else /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
 #define perf_domain_span(pd) NULL
@@ -3336,4 +3293,50 @@ unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned
 	return util;
 }
 #endif
+#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+/**
+ * enum schedutil_type - CPU utilization type
+ * @FREQUENCY_UTIL:	Utilization used to select frequency
+ * @ENERGY_UTIL:	Utilization used during energy calculation
+ *
+ * The utilization signals of all scheduling classes (CFS/RT/DL) and IRQ time
+ * need to be aggregated differently depending on the usage made of them. This
+ * enum is used within schedutil_freq_util() to differentiate the types of
+ * utilization expected by the callers, and adjust the aggregation accordingly.
+ */
+enum schedutil_type {
+	FREQUENCY_UTIL,
+	ENERGY_UTIL,
+};
 
+unsigned long schedutil_freq_util(int cpu, unsigned long util,
+	              unsigned long max, enum schedutil_type type);
+
+static inline unsigned long schedutil_energy_util(int cpu, unsigned long util)
+{
+	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
+
+	return schedutil_freq_util(cpu, util, max, ENERGY_UTIL);
+}
+#endif /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
+static inline unsigned long cpu_bw_dl(struct rq *rq)
+{
+	return (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
+}
+
+static inline unsigned long cpu_util_dl(struct rq *rq)
+{
+	return READ_ONCE(rq->avg_dl.util_avg);
+}
+
+static inline unsigned long cpu_util_cfs(struct rq *rq)
+{
+	unsigned long util = READ_ONCE(rq->cfs.avg.util_avg);
+
+	if (sched_feat(UTIL_EST)) {
+		util = max_t(unsigned long, util,
+				READ_ONCE(rq->cfs.avg.util_est.enqueued));
+	}
+
+	return util;
+}
