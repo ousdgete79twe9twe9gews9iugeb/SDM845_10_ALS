@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,6 +24,7 @@
 #include <linux/interrupt.h>
 #include <linux/timer.h>
 #include <linux/pm_opp.h>
+#include <linux/cpufreq.h>
 #include <linux/cpu_cooling.h>
 #include <linux/atomic.h>
 #include <linux/regulator/consumer.h>
@@ -107,6 +108,7 @@ struct limits_dcvs_hw {
 	struct device_attribute lmh_freq_attr;
 	struct list_head list;
 	bool is_irq_enabled;
+	bool is_plat_mit_disabled;
 	struct mutex access_lock;
 	struct __limits_cdev_data *cdev_data;
 	struct regulator *isens_reg;
@@ -424,6 +426,8 @@ static int limits_cpu_online(unsigned int online_cpu)
 {
 	struct limits_dcvs_hw *hw = get_dcvsh_hw_from_cpu(online_cpu);
 	unsigned int idx = 0, cpu = 0;
+	struct device_node *cpu_node;
+	struct cpufreq_policy *policy;
 
 	if (!hw)
 		return 0;
@@ -437,11 +441,32 @@ static int limits_cpu_online(unsigned int online_cpu)
 		} else if (hw->cdev_data[idx].cdev) {
 			return 0;
 		}
-		cpumask_set_cpu(cpu, &cpu_mask);
 		hw->cdev_data[idx].max_freq = U32_MAX;
 		hw->cdev_data[idx].min_freq = 0;
-		hw->cdev_data[idx].cdev = cpufreq_platform_cooling_register(
+		if (!hw->is_plat_mit_disabled) {
+			cpumask_set_cpu(cpu, &cpu_mask);
+			hw->cdev_data[idx].cdev =
+				cpufreq_platform_cooling_register(
 						&cpu_mask, &cd_ops);
+		} else {
+			cpu_node = of_cpu_device_node_get(cpu);
+			if (WARN_ON(!cpu_node)) {
+				hw->cdev_data[idx].cdev = NULL;
+				continue;
+			}
+
+			policy = cpufreq_cpu_get(cpu);
+			if (!policy) {
+				pr_err("No policy for cpu%d\n", cpu);
+				hw->cdev_data[idx].cdev = NULL;
+				of_node_put(cpu_node);
+				continue;
+			}
+			hw->cdev_data[idx].cdev =
+				of_cpufreq_cooling_register(cpu_node,
+					policy);
+			of_node_put(cpu_node);
+		}
 		if (IS_ERR_OR_NULL(hw->cdev_data[idx].cdev)) {
 			pr_err("CPU:%u cooling device register error:%ld\n",
 				cpu, PTR_ERR(hw->cdev_data[idx].cdev));
@@ -594,6 +619,10 @@ static int limits_dcvs_probe(struct platform_device *pdev)
 	ret = enable_lmh();
 	if (ret)
 		return ret;
+
+	/* Check whether platform mitigation needs to enable or not */
+	hw->is_plat_mit_disabled = of_property_read_bool(dn,
+				"qcom,plat-mitigation-disable");
 
 	/*
 	 * Setup virtual thermal zones for each LMH-DCVS hardware

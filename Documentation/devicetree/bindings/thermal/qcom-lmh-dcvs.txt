@@ -46,6 +46,12 @@ Properties:
 			property is valid only if there is valid entry for
 			isens_vref-supply.
 
+- qcom,plat-mitigation-disable:
+	Usage: optional
+	Value type: <none>
+	Definition: Should define this property if platform based cpu cooling
+			device is not required.
+
 Example:
 
 	lmh_dcvs0: qcom,limits-dcvs@0 {
@@ -54,6 +60,7 @@ Example:
 		qcom,affinity = <0>;
 		isens_vref-supply = <&pm8998_l1_ao>;
 		isens-vref-settings = <880000 880000 36000>;
+		qcom,plat-mitigation-disable;
 	};
 
 	CPU0: cpu@0 {
