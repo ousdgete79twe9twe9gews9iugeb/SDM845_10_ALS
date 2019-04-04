@@ -5224,7 +5224,7 @@ static inline void hrtick_update(struct rq *rq)
 #ifdef CONFIG_SMP
 static unsigned long capacity_orig_of(int cpu);
 static unsigned long cpu_util(int cpu);
-static inline unsigned long boosted_cpu_util(int cpu);
+//static inline unsigned long boosted_cpu_util(int cpu);
 #else
 #define boosted_cpu_util(cpu) cpu_util_freq(cpu)
 #endif
@@ -6636,6 +6636,18 @@ schedtune_task_margin(struct task_struct *p)
 	return margin;
 }
 
+unsigned long
+stune_util(int cpu, unsigned long other_util)
+{
+	unsigned long util = min_t(unsigned long, SCHED_CAPACITY_SCALE,
+				   cpu_util_cfs(cpu_rq(cpu)) + other_util);
+	long margin = schedtune_cpu_margin(util, cpu);
+
+	trace_sched_boost_cpu(cpu, util, margin);
+
+	return util + margin;
+}
+
 #else /* CONFIG_SCHED_TUNE */
 
 static inline int
@@ -6651,20 +6663,6 @@ schedtune_task_margin(struct task_struct *p)
 }
 
 #endif /* CONFIG_SCHED_TUNE */
-
-static inline unsigned long
-boosted_cpu_util(int cpu)
-{
-	unsigned long util = cpu_util_freq(cpu, NULL);
-	long margin = schedtune_cpu_margin(util, cpu);
-
-	trace_sched_boost_cpu(cpu, util, margin);
-
-	if (sched_feat(SCHEDTUNE_BOOST_UTIL))
-		return util + margin;
-	else
-		return util;
-}
 
 static inline unsigned long
 boosted_task_util(struct task_struct *p)

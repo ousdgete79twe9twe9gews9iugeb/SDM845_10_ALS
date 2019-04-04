@@ -41,6 +41,7 @@ void schedtune_dequeue_task(struct task_struct *p, int cpu);
 int schedtune_normalize_energy(int energy);
 int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 			    struct task_struct *task);
+unsigned long stune_util(int cpu, unsigned long other_util);
 
 #else /* CONFIG_SCHED_TUNE */
 
@@ -53,6 +54,9 @@ int schedtune_accept_deltas(int nrg_delta, int cap_delta,
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
 
+<<<<<<< HEAD
 #define schedtune_accept_deltas(nrg_delta, cap_delta, task) nrg_delta
 
+=======
+>>>>>>> 9a05300da09d... ANDROID: sched/tune: Move SchedTune cpu API into UtilClamp wrappers
 #endif /* CONFIG_SCHED_TUNE */
