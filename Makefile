@@ -649,7 +649,7 @@ ifdef CONFIG_LTO_CLANG
 # use GNU gold with LLVMgold for LTO linking, and LD for vmlinux_link
 LDFINAL_vmlinux := $(LD)
 LD		:= $(LDGOLD)
-LDFLAGS	+= -plugin LLVMgold.so
+LDFLAGS	+= --plugin=LLVMgold.so
 # use llvm-ar for building symbol tables from IR files, and llvm-nm instead
 # of objdump for processing symbol versions and exports
 LLVM_AR	:= llvm-ar
@@ -684,6 +684,19 @@ else
 lto-clang-flags := -flto
 endif
 lto-clang-flags += -fvisibility=default $(call cc-option, -fsplit-lto-unit)
+
+ifdef KERNEL_THINLTO_CACHE_PATH
+THINLTO_CACHE_PATH := $(KERNEL_THINLTO_CACHE_PATH)
+else
+THINLTO_CACHE_PATH := .thinlto-cache
+endif
+ifeq ($(ld-name),lld)
+LDFLAGS += --thinlto-cache-dir=$(THINLTO_CACHE_PATH)
+LDFLAGS += --thinlto-cache-policy=cache_size=5%:cache_size_bytes=5g
+else ifeq ($(ld-name),gold)
+LDFLAGS += --plugin-opt=cache-dir=$(THINLTO_CACHE_PATH)
+LDFLAGS += --plugin-opt=cache-policy=cache_size=5%:cache_size_bytes=5g
+endif
 
 # allow disabling only clang LTO where needed
 DISABLE_LTO_CLANG := -fno-lto
