@@ -243,12 +243,13 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 				  unsigned long max, enum schedutil_type type)
 {
-	unsigned long util, dl_util, irq;
+	unsigned long dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
-	if (sched_feat(SUGOV_RT_MAX_FREQ) && type == FREQUENCY_UTIL &&
-						rt_rq_is_runnable(&rq->rt))
+	if ((sched_feat(SUGOV_RT_MAX_FREQ) || !IS_BUILTIN(CONFIG_UCLAMP_TASK)) &&
+	    type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt)) {
 		return max;
+	}
 
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
@@ -267,7 +268,17 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * CFS tasks and we use the same metric to track the effective
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
+	 *
+	 * CFS and RT utilization can be boosted or capped, depending on
+	 * utilization clamp constraints requested by currently RUNNABLE
+	 * tasks.
+	 * When there are no CFS RUNNABLE tasks, clamps are released and
+	 * frequency will be gracefully reduced with the utilization decay.
 	 */
+	util = util_cfs + cpu_util_rt(rq);
+	if (type == FREQUENCY_UTIL)
+		util = uclamp_util(rq, util);
+
 	dl_util = cpu_util_dl(rq);
 
 	/*
