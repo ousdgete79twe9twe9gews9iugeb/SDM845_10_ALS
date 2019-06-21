@@ -204,8 +204,8 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	unsigned long dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
-	if (sched_feat(SUGOV_RT_MAX_FREQ) && type == FREQUENCY_UTIL &&
-						rt_rq_is_runnable(&rq->rt))
+		if ((sched_feat(SUGOV_RT_MAX_FREQ) || !IS_BUILTIN(CONFIG_UCLAMP_TASK)) &&
+	    type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt)) {
 		return max;
 
 	/*
@@ -216,6 +216,7 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	irq = cpu_util_irq(rq);
 	if (unlikely(irq >= max))
 		return max;
+	}
 
 	/*
 	 * Because the time spend on RT/DL tasks is visible as 'lost' time to
@@ -230,6 +231,8 @@ unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
 	 * frequency will be gracefully reduced with the utilization decay.
 	 */
 	util = util_cfs + cpu_util_rt(rq);
+	if (type == FREQUENCY_UTIL)
+		util = uclamp_util(rq, util);
 
 	dl_util = cpu_util_dl(rq);
 
