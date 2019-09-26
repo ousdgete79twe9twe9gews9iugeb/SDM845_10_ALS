@@ -11,7 +11,7 @@ typedef     __u8        uint8;
 #include <linux/string.h>
 #include <linux/kallsyms.h>
 //extern uint32_t chip_serial_num;
-extern unsigned long totalram_pages __read_mostly;
+#include <linux/mm.h>
 
 struct project_info {
     char project_name[8];  //eg, 16859
@@ -83,6 +83,5 @@ int push_component_info(enum COMPONENT_TYPE type,
 int reset_component_info(enum COMPONENT_TYPE type);
 uint32 get_hw_version(void);
 void save_dump_reason_to_smem(char *info, char *function_name);
-
 
 #endif
