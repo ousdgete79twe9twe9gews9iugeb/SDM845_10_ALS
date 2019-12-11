@@ -7768,6 +7768,20 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	return target_cpu;
 }
 
+#ifdef CONFIG_UCLAMP_TASK
+static inline unsigned long uclamp_task_util(struct task_struct *p)
+{
+	return clamp(task_util_est(p),
+	     uclamp_eff_value(p, UCLAMP_MIN),
+	     uclamp_eff_value(p, UCLAMP_MAX));
+}
+#else
+static inline unsigned long uclamp_task_util(struct task_struct *p)
+{
+	return task_util_est(p);
+}
+#endif
+
 /*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
  * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
@@ -7791,7 +7805,7 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	/* Bring task utilization in sync with prev_cpu */
 	sync_entity_load_avg(&p->se);
 
-	return min_cap * 1024 < task_util(p) * capacity_margin;
+	return min_cap * 1024 < uclamp_task_util(p) * capacity_margin;
 }
 
 static inline int wake_to_idle(struct task_struct *p)
