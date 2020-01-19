@@ -34,6 +34,7 @@
 #include <linux/mmu_context.h>
 #include <linux/poll.h>
 #include <linux/eventfd.h>
+#include <linux/hrtimer.h>
 
 #include "u_fs.h"
 #include "u_f.h"
@@ -43,6 +44,11 @@
 #define FUNCTIONFS_MAGIC	0xa647361 /* Chosen by a honest dice roll ;) */
 
 #define NUM_PAGES	10 /* # of pages for ipc logging */
+
+#define ADB_PULL_PUSH_TIMEOUT	1000
+
+static struct hrtimer ffs_op_timer;
+static bool ffs_op_flg = true;
 
 static void *ffs_ipc_log;
 #define ffs_log(fmt, ...) do { \
@@ -683,14 +689,19 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 
 	/* to get updated opened atomic variable value */
 	smp_mb__before_atomic();
-	if (atomic_read(&ffs->opened))
+	if (atomic_read(&ffs->opened)) {
+		pr_err("ep0 is already opened!\n");
 		return -EBUSY;
+	}
 
-	if (unlikely(ffs->state == FFS_CLOSING))
+	if (unlikely(ffs->state == FFS_CLOSING)) {
+		pr_err("FFS_CLOSING!\n");
 		return -EBUSY;
+	}
 
 	file->private_data = ffs;
 	ffs_data_opened(ffs);
+	pr_info("ep0_open success!\n");
 
 	return 0;
 }
@@ -1255,6 +1266,25 @@ error:
 	return ret;
 }
 
+static enum hrtimer_restart ffs_op_timeout(struct hrtimer *timer)
+{
+	static int cnt;
+
+	/* wait 5s to close */
+	if (!ffs_op_flg)
+		cnt = cnt + 1;
+	if (cnt > 5) {
+		pr_info("ffs_op_timeout, close lpm_disable\n");
+		cnt = 0;
+		return HRTIMER_NORESTART;
+	}
+
+	hrtimer_start(&ffs_op_timer,
+		ms_to_ktime(ADB_PULL_PUSH_TIMEOUT),
+		HRTIMER_MODE_REL);
+	return HRTIMER_RESTART;
+}
+
 static int
 ffs_epfile_open(struct inode *inode, struct file *file)
 {
@@ -1347,6 +1377,8 @@ static ssize_t ffs_epfile_write_iter(struct kiocb *kiocb, struct iov_iter *from)
 		kiocb_set_cancel_fn(kiocb, ffs_aio_cancel);
 
 	res = ffs_epfile_io(kiocb->ki_filp, p);
+	if (ffs_op_flg)
+		ffs_op_flg = false;
 	if (res == -EIOCBQUEUED)
 		return res;
 	if (p->aio)
@@ -1398,6 +1430,8 @@ static ssize_t ffs_epfile_read_iter(struct kiocb *kiocb, struct iov_iter *to)
 		kiocb_set_cancel_fn(kiocb, ffs_aio_cancel);
 
 	res = ffs_epfile_io(kiocb->ki_filp, p);
+	if (ffs_op_flg)
+		ffs_op_flg = false;
 	if (res == -EIOCBQUEUED)
 		return res;
 
@@ -3599,6 +3633,9 @@ static int ffs_func_bind(struct usb_configuration *c,
 	if (ret && !--ffs_opts->refcnt)
 		functionfs_unbind(func->ffs);
 
+	ffs_op_flg = false;
+	hrtimer_init(&ffs_op_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	ffs_op_timer.function = ffs_op_timeout;
 	ffs_log("exit: ret %d", ret);
 
 	return ret;
@@ -4188,6 +4225,8 @@ static void ffs_func_unbind(struct usb_configuration *c,
 	func->interfaces_nums = NULL;
 
 	ffs_event_add(ffs, FUNCTIONFS_UNBIND);
+	hrtimer_cancel(&ffs_op_timer);
+	ffs_op_flg = false;
 
 	ffs_log("exit: state %d setup_state %d flag %lu", ffs->state,
 	ffs->setup_state, ffs->flags);

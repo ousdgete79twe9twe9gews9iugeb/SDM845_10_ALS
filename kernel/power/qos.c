@@ -636,7 +636,6 @@ void pm_qos_add_request(struct pm_qos_request *req,
 		break;
 	}
 
-	req->pm_qos_class = pm_qos_class;
 	INIT_DELAYED_WORK(&req->work, pm_qos_work_fn);
 	trace_pm_qos_add_request(pm_qos_class, value);
 	pm_qos_update_target(pm_qos_array[pm_qos_class]->constraints,
@@ -659,6 +658,8 @@ void pm_qos_add_request(struct pm_qos_request *req,
 		}
 	}
 #endif
+
+	req->pm_qos_class = pm_qos_class;
 }
 EXPORT_SYMBOL_GPL(pm_qos_add_request);
 

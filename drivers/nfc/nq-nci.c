@@ -1218,6 +1218,7 @@ static int nqx_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, nqx_dev);
 	nqx_dev->irq_wake_up = false;
 
+
 	dev_err(&client->dev,
 	"%s: probing NFCC NQxxx exited successfully\n",
 		 __func__);
