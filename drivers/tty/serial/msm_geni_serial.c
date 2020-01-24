@@ -2255,7 +2255,7 @@ static struct uart_driver msm_geni_console_driver = {
 	.cons = &cons_ops,
 };
 #else
-static int console_register(struct uart_driver *drv)
+static int __maybe_unused console_register(struct uart_driver *drv)
 {
 	return 0;
 }
