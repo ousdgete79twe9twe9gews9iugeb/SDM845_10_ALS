@@ -2316,7 +2316,7 @@ static int __maybe_unused console_register(struct uart_driver *drv)
 {
 	return uart_register_driver(drv);
 }
-static void console_unregister(struct uart_driver *drv)
+static void __maybe_unused console_unregister(struct uart_driver *drv)
 {
 	uart_unregister_driver(drv);
 }
@@ -2344,7 +2344,7 @@ static int __maybe_unused console_register(struct uart_driver *drv)
 	return 0;
 }
 
-static void console_unregister(struct uart_driver *drv)
+static void __maybe_unused console_unregister(struct uart_driver *drv)
 {
 }
 #endif /* defined(CONFIG_SERIAL_CORE_CONSOLE) || defined(CONFIG_CONSOLE_POLL) */
