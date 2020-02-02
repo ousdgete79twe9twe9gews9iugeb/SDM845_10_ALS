@@ -1892,11 +1892,12 @@ continue_unlock:
 
 			ret = __write_node_page(page, false, &submitted,
 						wbc, do_balance, io_type, NULL);
-			if (ret)
+			if (ret) {
 				unlock_page(page);
-			else if (submitted)
+				continue;
+			}
+			if (submitted)
 				nwritten++;
-
 			if (--wbc->nr_to_write == 0)
 				break;
 		}
