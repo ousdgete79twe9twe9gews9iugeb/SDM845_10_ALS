@@ -9499,6 +9499,9 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 
 skip_unlock: __attribute__ ((unused));
 
+	capacity *= scale_rt_capacity(cpu);
+	capacity >>= SCHED_CAPACITY_SHIFT;
+
 	if (!capacity)
 		capacity = 1;
 
