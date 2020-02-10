@@ -1860,7 +1860,7 @@ static __latent_entropy struct task_struct *copy_process(
 		pidfd = retval;
 		retval = put_user(pidfd, parent_tidptr);
 		if (retval)
-			goto bad_fork_put_pidfd;
+			goto bad_fork_free_pid;
 	}
 
 #ifdef CONFIG_BLOCK
@@ -1923,7 +1923,7 @@ static __latent_entropy struct task_struct *copy_process(
 	 */
 	retval = cgroup_can_fork(p);
 	if (retval)
-		goto bad_fork_cgroup_threadgroup_change_end;
+		goto bad_fork_free_pid;
 
 	/*
 	 * From this point on we must avoid any synchronous user-space
