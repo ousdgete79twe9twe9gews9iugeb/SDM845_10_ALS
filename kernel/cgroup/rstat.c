@@ -1,5 +1,6 @@
 #include "cgroup-internal.h"
-#include <linux/cputime.h>
+#include <linux/sched.h>
+#include <linux/kernel_stat.h>
 
 static DEFINE_SPINLOCK(cgroup_rstat_lock);
 static DEFINE_PER_CPU(raw_spinlock_t, cgroup_rstat_cpu_lock);
