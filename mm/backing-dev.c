@@ -1035,7 +1035,7 @@ EXPORT_SYMBOL(set_wb_congested);
 long congestion_wait(int sync, long timeout)
 {
 	long ret;
-	unsigned long start = jiffies;
+	unsigned long __maybe_unused start = jiffies;
 	DEFINE_WAIT(wait);
 	wait_queue_head_t *wqh = &congestion_wqh[sync];
 
