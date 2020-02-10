@@ -427,17 +427,6 @@ out_unlock:
 	return css;
 }
 
-static void cgroup_get(struct cgroup *cgrp)
-{
-	WARN_ON_ONCE(cgroup_is_dead(cgrp));
-	css_get(&cgrp->self);
-}
-
-static bool cgroup_tryget(struct cgroup *cgrp)
-{
-	return css_tryget(&cgrp->self);
-}
-
 struct cgroup_subsys_state *of_css(struct kernfs_open_file *of)
 {
 	struct cgroup *cgrp = of->kn->parent->priv;
@@ -731,10 +720,11 @@ void put_css_set_locked(struct css_set *cset)
 		list_del(&link->cgrp_link);
 		if (cgroup_parent(link->cgrp))
 			cgroup_put(link->cgrp);
-		kmem_cache_free(cgrp_cset_link_pool, link);
+		kfree(link);
 	}
 
-	call_rcu(&cset->rcu_head, __free_cset_rcu);
+//	call_rcu(&cset->rcu_head, __free_cset_rcu);
+	kfree_rcu(cset, rcu_head);
 }
 
 /**
@@ -865,7 +855,7 @@ static void free_cgrp_cset_links(struct list_head *links_to_free)
 
 	list_for_each_entry_safe(link, tmp_link, links_to_free, cset_link) {
 		list_del(&link->cset_link);
-		kmem_cache_free(cgrp_cset_link_pool, link);
+		kfree(link);
 	}
 }
 
@@ -885,7 +875,7 @@ static int allocate_cgrp_cset_links(int count, struct list_head *tmp_links)
 	INIT_LIST_HEAD(tmp_links);
 
 	for (i = 0; i < count; i++) {
-		link = kmem_cache_zalloc(cgrp_cset_link_pool, GFP_KERNEL);
+		link = kzalloc(sizeof(*link), GFP_KERNEL);
 		if (!link) {
 			free_cgrp_cset_links(tmp_links);
 			return -ENOMEM;
@@ -958,13 +948,13 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 	if (cset)
 		return cset;
 
-	cset = kmem_cache_zalloc(cgrp_cset_pool, GFP_KERNEL);
+	cset = kzalloc(sizeof(*cset), GFP_KERNEL);
 	if (!cset)
 		return NULL;
 
 	/* Allocate all the cgrp_cset_link objects that we'll need */
 	if (allocate_cgrp_cset_links(cgroup_root_count, &tmp_links) < 0) {
-		kmem_cache_free(cgrp_cset_pool, cset);
+		kfree(cset);
 		return NULL;
 	}
 
@@ -1072,7 +1062,7 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 	list_for_each_entry_safe(link, tmp_link, &cgrp->cset_links, cset_link) {
 		list_del(&link->cset_link);
 		list_del(&link->cgrp_link);
-		kmem_cache_free(cgrp_cset_link_pool, link);
+		kfree(link);
 	}
 
 	spin_unlock_irq(&css_set_lock);
@@ -3887,11 +3877,10 @@ static struct cftype cgroup_base_files[] = {
 	{
 		.name = "cgroup.procs",
 		.file_offset = offsetof(struct cgroup, procs_file),
-		.seq_start = cgroup_pidlist_start,
-		.seq_next = cgroup_pidlist_next,
-		.seq_stop = cgroup_pidlist_stop,
-		.seq_show = cgroup_pidlist_show,
-		.private = CGROUP_FILE_PROCS,
+		.release = cgroup_procs_release,
+		.seq_start = cgroup_procs_start,
+		.seq_next = cgroup_procs_next,
+		.seq_show = cgroup_procs_show,
 		.write = cgroup_procs_write,
 	},
 	{
@@ -4631,9 +4620,6 @@ int __init cgroup_init(void)
 {
 	struct cgroup_subsys *ss;
 	int ssid;
-
-	cgrp_cset_pool = KMEM_CACHE(css_set, SLAB_HWCACHE_ALIGN | SLAB_PANIC);
-	cgrp_cset_link_pool = KMEM_CACHE(cgrp_cset_link, SLAB_HWCACHE_ALIGN | SLAB_PANIC);
 
 	BUILD_BUG_ON(CGROUP_SUBSYS_COUNT > 16);
 	BUG_ON(percpu_init_rwsem(&cgroup_threadgroup_rwsem));
