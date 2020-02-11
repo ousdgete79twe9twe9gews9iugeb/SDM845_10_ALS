@@ -7778,7 +7778,7 @@ static inline unsigned long uclamp_task_util(struct task_struct *p)
 #else
 static inline unsigned long uclamp_task_util(struct task_struct *p)
 {
-	return task_util_est(p);
+	return task_util(p);
 }
 #endif
 
