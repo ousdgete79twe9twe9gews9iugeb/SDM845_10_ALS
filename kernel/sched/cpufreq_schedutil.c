@@ -263,10 +263,9 @@ unsigned long schedutil_cpu_util(int cpu, unsigned long util_cfs,
 	unsigned long dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
-	if (sched_feat(SUGOV_RT_MAX_FREQ) && !IS_BUILTIN(CONFIG_UCLAMP_TASK) &&
-	    type == FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt)) {
+	if (sched_feat(SUGOV_RT_MAX_FREQ) && type == FREQUENCY_UTIL &&
+						rt_rq_is_runnable(&rq->rt))
 		return max;
-	}
 
 	/*
 	 * Early check to see if IRQ/steal time saturates the CPU, can be
