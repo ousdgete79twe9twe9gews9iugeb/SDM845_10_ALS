@@ -25,6 +25,7 @@
 
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/blk_types.h>
 #include <asm/byteorder.h>
 #include <asm/memory.h>
 #include <asm-generic/pci_iomap.h>
@@ -383,15 +384,6 @@ extern void _memset_io(volatile void __iomem *, int, size_t);
 #define writesb(p,d,l)		__raw_writesb(p,d,l)
 #define writesw(p,d,l)		__raw_writesw(p,d,l)
 #define writesl(p,d,l)		__raw_writesl(p,d,l)
-
-#define readb_no_log(c) \
-		({ u8  __v = readb_relaxed_no_log(c); __iormb(); __v; })
-#define readw_no_log(c) \
-		({ u16 __v = readw_relaxed_no_log(c); __iormb(); __v; })
-#define readl_no_log(c) \
-		({ u32 __v = readl_relaxed_no_log(c); __iormb(); __v; })
-#define readq_no_log(c) \
-		({ u64 __v = readq_relaxed_no_log(c); __iormb(); __v; })
 
 #ifndef __ARMBE__
 static inline void memset_io(volatile void __iomem *dst, unsigned c,

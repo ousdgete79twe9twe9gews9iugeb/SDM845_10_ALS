@@ -80,7 +80,6 @@
 
 #include <linux/stringify.h>
 #include <asm/barrier.h>
-#include <asm/cacheflush.h>
 
 #define read_gicreg			read_sysreg_s
 #define write_gicreg			write_sysreg_s
@@ -170,25 +169,9 @@ static inline void gic_write_bpr1(u32 val)
 	write_sysreg_s(val, ICC_BPR1_EL1);
 }
 
-#define gic_read_typer(c)		readq_relaxed_no_log(c)
-#define gic_read_irouter(c)		readq_relaxed_no_log(c)
-#define gic_write_irouter(v, c)		writeq_relaxed_no_log(v, c)
-
-#define gic_flush_dcache_to_poc(a,l)	__flush_dcache_area((a), (l))
-
-#define gits_read_baser(c)		readq_relaxed(c)
-#define gits_write_baser(v, c)		writeq_relaxed(v, c)
-
-#define gits_read_cbaser(c)		readq_relaxed(c)
-#define gits_write_cbaser(v, c)		writeq_relaxed(v, c)
-
-#define gits_write_cwriter(v, c)	writeq_relaxed(v, c)
-
-#define gicr_read_propbaser(c)		readq_relaxed(c)
-#define gicr_write_propbaser(v, c)	writeq_relaxed(v, c)
-
-#define gicr_write_pendbaser(v, c)	writeq_relaxed(v, c)
-#define gicr_read_pendbaser(c)		readq_relaxed(c)
+#define gic_read_typer(c)		readq_relaxed(c)
+#define gic_read_irouter(c)		readq_relaxed(c)
+#define gic_write_irouter(v, c)		writeq_relaxed(v, c)
 
 #endif /* __ASSEMBLY__ */
 #endif /* __ASM_ARCH_GICV3_H */
