@@ -449,23 +449,14 @@ static int limits_cpu_online(unsigned int online_cpu)
 				cpufreq_platform_cooling_register(
 						&cpu_mask, &cd_ops);
 		} else {
-			cpu_node = of_cpu_device_node_get(cpu);
-			if (WARN_ON(!cpu_node)) {
-				hw->cdev_data[idx].cdev = NULL;
-				continue;
-			}
-
 			policy = cpufreq_cpu_get(cpu);
 			if (!policy) {
 				pr_err("No policy for cpu%d\n", cpu);
 				hw->cdev_data[idx].cdev = NULL;
-				of_node_put(cpu_node);
 				continue;
 			}
 			hw->cdev_data[idx].cdev =
-				of_cpufreq_cooling_register(cpu_node,
-					policy);
-			of_node_put(cpu_node);
+				of_cpufreq_cooling_register(policy);
 		}
 		if (IS_ERR_OR_NULL(hw->cdev_data[idx].cdev)) {
 			pr_err("CPU:%u cooling device register error:%ld\n",
