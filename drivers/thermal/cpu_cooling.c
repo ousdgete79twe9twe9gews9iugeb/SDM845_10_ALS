@@ -69,6 +69,10 @@ struct time_in_idle {
  *	cooling	devices.
  * @clipped_freq: integer value representing the absolute value of the clipped
  *	frequency.
+ * @cpufreq_floor_state: integer value representing the frequency floor state
+ *	of cpufreq cooling devices.
+ * @floor_freq: integer value representing the absolute value of the floor
+ *	frequency.
  * @max_level: maximum cooling level. One less than total number of valid
  *	cpufreq frequencies.
  * @em: Reference on the Energy Model of the device
@@ -86,6 +90,8 @@ struct cpufreq_cooling_device {
 	u32 last_load;
 	unsigned int cpufreq_state;
 	unsigned int clipped_freq;
+	unsigned int cpufreq_floor_state;
+	unsigned int floor_freq;
 	unsigned int max_level;
 	struct em_perf_domain *em;
 	struct thermal_cooling_device *cdev;
@@ -117,7 +123,7 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 				    unsigned long event, void *data)
 {
 	struct cpufreq_policy *policy = data;
-	unsigned long clipped_freq;
+	unsigned long clipped_freq = ULONG_MAX, floor_freq = 0;
 	struct cpufreq_cooling_device *cpufreq_cdev;
 
 	if (event != CPUFREQ_ADJUST)
@@ -132,23 +138,27 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 		if (policy->cpu != cpufreq_cdev->policy->cpu)
 			continue;
 
-		/*
-		 * policy->max is the maximum allowed frequency defined by user
-		 * and clipped_freq is the maximum that thermal constraints
-		 * allow.
-		 *
-		 * If clipped_freq is lower than policy->max, then we need to
-		 * readjust policy->max.
-		 *
-		 * But, if clipped_freq is greater than policy->max, we don't
-		 * need to do anything.
-		 */
-		clipped_freq = cpufreq_cdev->clipped_freq;
-
-		if (policy->max > clipped_freq)
-			cpufreq_verify_within_limits(policy, 0, clipped_freq);
-		break;
+		if (cpufreq_cdev->clipped_freq < clipped_freq)
+			clipped_freq = cpufreq_cdev->clipped_freq;
+		if (cpufreq_cdev->floor_freq > floor_freq)
+			floor_freq = cpufreq_cdev->floor_freq;
 	}
+	/*
+	 * policy->max is the maximum allowed frequency defined by user
+	 * and clipped_freq is the maximum that thermal constraints
+	 * allow.
+	 *
+	 * If clipped_freq is lower than policy->max, then we need to
+	 * readjust policy->max.
+	 *
+	 * But, if clipped_freq is greater than policy->max, we don't
+	 * need to do anything.
+	 *
+	 * Similarly, if policy minimum set by the user is less than
+	 * the floor_frequency, then adjust the policy->min.
+	 */
+	if (policy->max > clipped_freq || policy->min < floor_freq)
+		cpufreq_verify_within_limits(policy, floor_freq, clipped_freq);
 	mutex_unlock(&cooling_list_lock);
 
 	return NOTIFY_OK;
@@ -432,6 +442,74 @@ static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
 }
 
 /**
+ * cpufreq_get_min_state - callback function to get the device floor state.
+ * @cdev: thermal cooling device pointer.
+ * @state: fill this variable with the cooling device floor.
+ *
+ * Callback for the thermal cooling device to return the cpufreq
+ * floor state.
+ *
+ * Return: 0 on success, an error code otherwise.
+ */
+static int cpufreq_get_min_state(struct thermal_cooling_device *cdev,
+		 unsigned long *state)
+{
+	struct cpufreq_cooling_device *cpufreq_device = cdev->devdata;
+
+	*state = cpufreq_device->cpufreq_floor_state;
+
+	return 0;
+}
+
+/**
+ * cpufreq_set_min_state - callback function to set the device floor state.
+ * @cdev: thermal cooling device pointer.
+ * @state: set this variable to the current cooling state.
+ *
+ * Callback for the thermal cooling device to change the cpufreq
+ * floor state.
+ *
+ * Return: 0 on success, an error code otherwise.
+ */
+static int cpufreq_set_min_state(struct thermal_cooling_device *cdev,
+		 unsigned long state)
+{
+	struct cpufreq_cooling_device *cpufreq_cdev = cdev->devdata;
+	unsigned int floor_freq;
+
+	if (state > cpufreq_cdev->max_level)
+	state = cpufreq_cdev->max_level;
+
+	if (cpufreq_cdev->cpufreq_floor_state == state)
+		return 0;
+
+	cpufreq_cdev->cpufreq_floor_state = state;
+
+	/*
+	 * Check if the device has a platform mitigation function that
+	 * can handle the CPU freq mitigation, if not, notify cpufreq
+	 * framework.
+	 */
+	if (cpufreq_cdev->plat_ops &&
+		cpufreq_cdev->plat_ops->floor_limit) {
+		/*
+		 * Last level is core isolation so use the frequency
+		 * of previous state.
+		 */
+		if (state == cpufreq_cdev->max_level)
+			    state--;
+		cpufreq_cdev->floor_freq = floor_freq;
+		cpufreq_cdev->plat_ops->floor_limit(cpufreq_cdev->policy->cpu, floor_freq);
+	} else {
+		floor_freq = get_state_freq(cpufreq_cdev, state);
+		cpufreq_cdev->floor_freq = floor_freq;
+		cpufreq_update_policy(cpufreq_cdev->policy->cpu);
+	}
+
+    return 0;
+}
+
+/**
  * cpufreq_state2power() - convert a cpu cdev state to power consumed
  * @cdev:	&thermal_cooling_device pointer
  * @tz:		a valid thermal zone device pointer
@@ -523,6 +601,8 @@ static struct thermal_cooling_device_ops cpufreq_cooling_ops = {
 	.get_max_state = cpufreq_get_max_state,
 	.get_cur_state = cpufreq_get_cur_state,
 	.set_cur_state = cpufreq_set_cur_state,
+	.set_min_state = cpufreq_set_min_state,
+	.get_min_state = cpufreq_get_min_state,
 };
 
 /* Notifier for cpufreq policy change */
@@ -622,6 +702,9 @@ __cpufreq_cooling_register(struct device_node *np,
 		goto remove_ida;
 
 	cpufreq_cdev->clipped_freq = get_state_freq(cpufreq_cdev, 0);
+	cpufreq_cdev->floor_freq = get_state_freq(cpufreq_cdev,
+						 cpufreq_cdev->max_level);
+	cpufreq_cdev->cpufreq_floor_state = cpufreq_cdev->max_level;
 	cpufreq_cdev->cdev = cdev;
 
 	mutex_lock(&cooling_list_lock);
