@@ -790,7 +790,7 @@ static int osm_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	}
 	table[i].frequency = CPUFREQ_TABLE_END;
 
-	ret = cpufreq_table_validate_and_show(policy, table);
+	ret = cpufreq_table_validate_and_sort(policy);
 	if (ret) {
 		pr_err("%s: invalid frequency table: %d\n", __func__, ret);
 		goto err;
