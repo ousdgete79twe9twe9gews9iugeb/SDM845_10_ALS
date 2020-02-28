@@ -107,7 +107,6 @@ static DEFINE_PER_CPU(struct lpm_cpu*, cpu_lpm);
 static bool suspend_in_progress;
 static struct hrtimer lpm_hrtimer;
 static DEFINE_PER_CPU(struct hrtimer, histtimer);
-static DEFINE_PER_CPU(struct hrtimer, biastimer);
 
 static void cluster_unprepare(struct lpm_cluster *cluster,
 		const struct cpumask *cpu, int child_idx, bool from_idle,
@@ -409,34 +408,6 @@ static void msm_pm_set_timer(uint32_t modified_time_us)
 
 	lpm_hrtimer.function = lpm_hrtimer_cb;
 	hrtimer_start(&lpm_hrtimer, modified_ktime, HRTIMER_MODE_REL_PINNED);
-}
-
-static void biastimer_cancel(void)
-{
-	unsigned int cpu = raw_smp_processor_id();
-	struct hrtimer *cpu_biastimer = &per_cpu(biastimer, cpu);
-	ktime_t time_rem;
-
-	time_rem = hrtimer_get_remaining(cpu_biastimer);
-	if (ktime_to_us(time_rem) <= 0)
-		return;
-
-	hrtimer_try_to_cancel(cpu_biastimer);
-}
-
-static enum hrtimer_restart biastimer_fn(struct hrtimer *h)
-{
-	return HRTIMER_NORESTART;
-}
-
-static void biastimer_start(uint32_t time_ns)
-{
-	ktime_t bias_ktime = ns_to_ktime(time_ns);
-	unsigned int cpu = raw_smp_processor_id();
-	struct hrtimer *cpu_biastimer = &per_cpu(biastimer, cpu);
-
-	cpu_biastimer->function = biastimer_fn;
-	hrtimer_start(cpu_biastimer, bias_ktime, HRTIMER_MODE_REL_PINNED);
 }
 
 static uint64_t lpm_cpuidle_predict(struct cpuidle_device *dev,
@@ -1327,8 +1298,6 @@ static bool psci_enter_sleep(struct lpm_cpu *cpu, int idx, bool from_idle)
 	 */
 
 	if (!idx) {
-		if (cpu->bias)
-			biastimer_start(cpu->bias);
 		stop_critical_timings();
 		cpu_do_idle();
 		start_critical_timings();
@@ -1444,10 +1413,6 @@ exit:
 	if (lpm_prediction && cpu->lpm_prediction) {
 		histtimer_cancel();
 		clusttimer_cancel();
-	}
-	if (cpu->bias) {
-		biastimer_cancel();
-		cpu->bias = 0;
 	}
 	local_irq_enable();
 	return idx;
@@ -1822,8 +1787,6 @@ static int lpm_probe(struct platform_device *pdev)
 	hrtimer_init(&lpm_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	for_each_possible_cpu(cpu) {
 		cpu_histtimer = &per_cpu(histtimer, cpu);
-		hrtimer_init(cpu_histtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-		cpu_histtimer = &per_cpu(biastimer, cpu);
 		hrtimer_init(cpu_histtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	}
 
